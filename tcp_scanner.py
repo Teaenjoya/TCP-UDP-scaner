@@ -1,7 +1,7 @@
 import random
 import socket
 import struct
-import time
+from contextlib import contextmanager
 
 
 SYN = 0x02
@@ -10,7 +10,49 @@ ACK = 0x10
 header_size = 20
 
 
-def scan_tcp_port(ip, dest_port, timeout):
+def start_tcp_scan(raw_socket, source_port, source_ip_b, dest_ip_b, dest_port):
+    sequence = random.getrandbits(32)
+    packet = build_tcp_packet(source_ip_b, source_port, dest_ip_b, dest_port, sequence, SYN)
+    raw_socket.send(packet)
+    return (sequence + 1) & 0xFFFFFFFF
+
+
+def read_tcp_response(raw_socket, source_port, source_ip_b, dest_ip_b, pending_tcp):
+    try:
+        response = raw_socket.recv(65535)
+    except BlockingIOError:
+        return None
+
+    tcp_offset = 0
+    if raw_socket.family == socket.AF_INET:
+        if response[12:20] != dest_ip_b + source_ip_b:
+            return None
+        tcp_offset = (response[0] & 0x0F) * 4
+        if tcp_offset < header_size:
+            return None
+    if len(response) < tcp_offset + header_size:
+        return None
+
+    response_port, response_dest_port, _, response_ack, _, flags = struct.unpack_from(
+        "!HHIIBB", response, tcp_offset
+    )
+    if response_dest_port != source_port:
+        return None
+    expected_ack = pending_tcp.get(response_port)
+    if not flags & ACK or response_ack != expected_ack:
+        return None
+
+    if flags & RST:
+        return response_port, "closed"
+    if flags & SYN:
+        reset = build_tcp_packet(source_ip_b, source_port, dest_ip_b, response_port, response_ack, RST)
+        raw_socket.send(reset)
+        return response_port, "open"
+    return None
+
+
+@contextmanager
+def open_tcp_scanner(ip):
     address_family = socket.AF_INET6 if ":" in ip else socket.AF_INET
 
     with (socket.socket(address_family, socket.SOCK_RAW, socket.IPPROTO_TCP) as raw_socket,
@@ -27,47 +69,8 @@ def scan_tcp_port(ip, dest_port, timeout):
         source_port = free_port_socket.getsockname()[1]
         source_ip_b = socket.inet_pton(address_family, local_ip)
         dest_ip_b = socket.inet_pton(address_family, ip.split("%", 1)[0])
-
-        sequence = random.getrandbits(2**5)
-        expected_ack = (sequence + 1) & 0xFFFFFFFF
-
-        raw_socket.settimeout(timeout)
-        raw_socket.send(build_tcp_packet(source_ip_b, source_port, dest_ip_b, dest_port, sequence, SYN))
-        deadline = time.monotonic() + timeout
-
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return "no_response"
-            raw_socket.settimeout(remaining)
-
-            try:
-                response = raw_socket.recv(65535)
-            except socket.timeout:
-                return "no_response"
-
-            tcp_offset = 0
-            if address_family == socket.AF_INET:
-                if response[12:20] != dest_ip_b + source_ip_b:
-                    continue
-                tcp_offset = (response[0] & 0x0F) * 4
-                if tcp_offset < header_size:
-                    continue
-            if len(response) < tcp_offset + header_size:
-                continue
-
-            response_port, response_dest_port, _, response_ack, _, flags = struct.unpack_from("!HHIIBB", response, tcp_offset)
-            if (response_port, response_dest_port) != (dest_port, source_port):
-                continue
-            if not flags & ACK or response_ack != expected_ack:
-                continue
-
-            if flags & RST:
-                return "closed"
-            if flags & SYN:
-                reset = build_tcp_packet(source_ip_b, source_port, dest_ip_b, dest_port, response_ack, RST)
-                raw_socket.send(reset)
-                return "open"
+        raw_socket.setblocking(False)
+        yield raw_socket, source_port, source_ip_b, dest_ip_b
 
 
 def build_tcp_packet(source_ip_b, source_port, dest_ip_b, dest_port, sequence, flags):

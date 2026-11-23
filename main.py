@@ -1,8 +1,7 @@
 import sys
 
 from parser import parse_args
-from tcp_scanner import scan_tcp_port
-from udp_scanner import scan_udp_port
+from poll_scanner import scan_ports
 
 
 def main():
@@ -14,22 +13,14 @@ def main():
         return 2
 
     args = parse_args(sys.argv[2:])
-    for protocol, port in args.ports:
-        transport = protocol.upper()
-        try:
-            if protocol == "tcp":
-                status = scan_tcp_port(args.ip_address, port, args.timeout)
-                application_protocol = "-"
-            else:
-                status, application_protocol = scan_udp_port(args.ip_address, port, args.timeout)
-        except OSError as error:
-            raise SystemExit(f"{transport} {port}: {error}")
-
-        if status == "open":
-            line = f"{transport} {port}"
+    try:
+        for protocol, port, application_protocol in scan_ports(args.ip_address, args.ports, args.timeout):
+            line = f"{protocol.upper()} {port}"
             if args.guess:
                 line += f" {application_protocol}"
             print(line)
+    except OSError as error:
+        raise SystemExit(str(error))
 
 
 if __name__ == "__main__":
