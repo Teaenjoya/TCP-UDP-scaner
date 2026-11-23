@@ -2,26 +2,6 @@ MIN_PORT = 1
 MAX_PORT = 65535
 
 
-def parse_port_number(value):
-    if not value.isascii() or not value.isdecimal():
-        raise ValueError(f"ожидался номер порта, получено {value!r}")
-
-    port = int(value)
-    if not MIN_PORT <= port <= MAX_PORT:
-        raise ValueError(f"порт должен быть от {MIN_PORT} до {MAX_PORT}: {port}")
-    return port
-
-
-def parse_port_range(value):
-    first, separator, last = value.partition("-")
-    start = parse_port_number(first)
-    end = parse_port_number(last) if separator else start
-
-    if start > end:
-        raise ValueError(f"начало диапазона больше конца: {value}")
-    return [port for port in range(start, end + 1)]
-
-
 def parse_port_selection(port_args):
     ports_pairs = []
     seen = set()
@@ -40,3 +20,23 @@ def parse_port_selection(port_args):
                     seen.add(pair)
 
     return ports_pairs
+
+
+def parse_port_range(value):
+    first, separator, last = value.partition("-")
+    start = parse_port_number(first)
+    end = parse_port_number(last) if separator else start
+
+    if start > end:
+        raise ValueError(f"начало диапазона больше конца: {value}")
+    return [port for port in range(start, end + 1)]
+
+
+def parse_port_number(value):
+    if not value.isascii() or not value.isdecimal():
+        raise ValueError(f"ожидался номер порта, получено {value!r}")
+
+    port = int(value)
+    if not MIN_PORT <= port <= MAX_PORT:
+        raise ValueError(f"порт должен быть от {MIN_PORT} до {MAX_PORT}: {port}")
+    return port

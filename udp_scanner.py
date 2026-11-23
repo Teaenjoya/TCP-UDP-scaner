@@ -1,22 +1,28 @@
 import socket
 import random
 import struct
+from contextlib import contextmanager
 
 
-def scan_udp_port(ip, port, timeout):
+@contextmanager
+def start_udp_scan(ip, port):
     address_family = socket.AF_INET6 if ":" in ip else socket.AF_INET
     query = build_dns_query("example.com")
 
     with socket.socket(address_family, socket.SOCK_DGRAM) as udp_socket:
-        udp_socket.settimeout(timeout)
-        try:
-            udp_socket.connect((ip, port))
-            udp_socket.send(query)
-            response = udp_socket.recv(65535)
-        except socket.timeout:
-            return "no_response", None
-        except (ConnectionRefusedError, ConnectionResetError):
-            return "closed", None
+        udp_socket.setblocking(False)
+        udp_socket.connect((ip, port))
+        udp_socket.send(query)
+        yield udp_socket, query
+
+
+def read_udp_response(udp_socket, query):
+    try:
+        response = udp_socket.recv(65535)
+    except BlockingIOError:
+        return None
+    except (ConnectionRefusedError, ConnectionResetError):
+        return "closed", None
 
     if is_dns_response(query, response):
         return "open", "DNS"
