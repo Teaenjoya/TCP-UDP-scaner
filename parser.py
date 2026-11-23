@@ -1,12 +1,12 @@
 import argparse
 import math
 from ipaddress import ip_address
-from port_selection import parse_port_selection
+from port_selector import parse_port_selection
 
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        prog="portscan",
+        prog="python main.py portscan",
         description="Принимает IP-адрес и список TCP- и UDP-портов.",
         allow_abbrev=False,
     )
