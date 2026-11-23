@@ -25,7 +25,8 @@ def scan_ports(ip, ports, timeout):
             open_ports = scan_batch(ip, batch, timeout, tcp_settings)
             for protocol, port in batch:
                 if (protocol, port) in open_ports:
-                    yield protocol, port, open_ports[protocol, port]
+                    response_time_ms, application_protocol = open_ports[protocol, port]
+                    yield protocol, port, response_time_ms, application_protocol
 
 
 def scan_batch(ip, ports, timeout, tcp_settings):
@@ -65,7 +66,7 @@ def scan_batch(ip, ports, timeout, tcp_settings):
                     response = read_tcp_response(*tcp_settings, pending_tcp)
                     if response is None:
                         continue
-                    port, status = response
+                    port, status, response_time_ms = response
                     del pending_tcp[port]
                     if not pending_tcp:
                         poller.unregister(socket_fd)
@@ -80,8 +81,9 @@ def scan_batch(ip, ports, timeout, tcp_settings):
                     del pending_udp[socket_fd]
                     poller.unregister(socket_fd)
                     protocol = "udp"
+                    response_time_ms = None
 
                 if status == "open":
-                    open_ports[protocol, port] = application_protocol
+                    open_ports[protocol, port] = response_time_ms, application_protocol
 
     return open_ports

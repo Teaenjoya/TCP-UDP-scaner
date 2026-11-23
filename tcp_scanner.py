@@ -1,6 +1,7 @@
 import random
 import socket
 import struct
+import time
 from contextlib import contextmanager
 
 
@@ -37,14 +38,17 @@ def start_tcp_scan(raw_socket, source_port, source_ip_b, dest_ip_b, dest_port):
     sequence = random.getrandbits(2**5)
     expected_ack = (sequence + 1) & 0xFFFFFFFF
 
-    raw_socket.send(build_tcp_packet(source_ip_b, source_port, dest_ip_b, dest_port, sequence, SYN))
-    return expected_ack
+    packet = build_tcp_packet(source_ip_b, source_port, dest_ip_b, dest_port, sequence, SYN)
+    sent_at = time.monotonic()
+    raw_socket.send(packet)
+    return expected_ack, sent_at
 
 
 def read_tcp_response(raw_socket, source_port, source_ip_b, dest_ip_b, pending_tcp):
     address_family = raw_socket.family
     try:
         response = raw_socket.recv(65535)
+        received_at = time.monotonic()
     except BlockingIOError:
         return None
 
@@ -61,16 +65,17 @@ def read_tcp_response(raw_socket, source_port, source_ip_b, dest_ip_b, pending_t
     response_port, response_dest_port, _, response_ack, _, flags = struct.unpack_from("!HHIIBB", response, tcp_offset)
     if response_dest_port != source_port:
         return None
-    expected_ack = pending_tcp.get(response_port)
+    expected_ack, sent_at = pending_tcp.get(response_port, (None, None))
     if not flags & ACK or response_ack != expected_ack:
         return None
 
     if flags & RST:
-        return response_port, "closed"
+        return response_port, "closed", None
     if flags & SYN:
         reset = build_tcp_packet(source_ip_b, source_port, dest_ip_b, response_port, response_ack, RST)
         raw_socket.send(reset)
-        return response_port, "open"
+        response_time_ms = (received_at - sent_at) * 1000
+        return response_port, "open", response_time_ms
     return None
 
 
