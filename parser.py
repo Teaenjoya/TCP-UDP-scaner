@@ -6,7 +6,7 @@ from port_selector import parse_port_selection
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        prog="python main.py portscan",
+        prog="portscan",
         description="Принимает IP-адрес и список TCP- и UDP-портов.",
         allow_abbrev=False,
     )

@@ -1,19 +1,11 @@
-import sys
-
+#!/usr/bin/env python3
 from http_check import guess_http
 from parser import parse_args
 from poll_scanner import scan_ports
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Справка - python main.py portscan --help", file=sys.stderr)
-        return 2
-    if sys.argv[1] != "portscan":
-        print(f"Команда '{sys.argv[1]}' не найдена.", file=sys.stderr)
-        return 2
-
-    args = parse_args(sys.argv[2:])
+    args = parse_args()
     try:
         for protocol, port, response_time_ms, application_protocol in scan_ports(args.ip_address, args.ports, args.timeout):
             line = f"{protocol.upper()} {port}"
